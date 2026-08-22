@@ -2311,7 +2311,9 @@ function StandingsTab({
     }
   }, p), /*#__PURE__*/React.createElement("span", {
     style: {
-      fontFamily: "var(--font-mono)"
+      fontFamily: "var(--font-mono)",
+      fontWeight: 600,
+      color: (standings.perRound[r.id]?.[p] || 0) >= 0 ? "var(--green)" : "var(--red)"
     }
   }, fmtEuro(standings.perRound[r.id]?.[p] || 0)))))))));
 }
