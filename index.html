@@ -153,6 +153,7 @@ const Icons = (() => {
     Plus: mk(["M12 5v14", "M5 12h14"]),
     Trash2: mk(["M3 6h18", "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", "M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6", "M10 11v6", "M14 11v6"]),
     Lock: mk(["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 8 0v4"]),
+    Unlock: mk(["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 7.75-3.9"]),
     Upload: mk(["M12 16V4", "M6 10l6-6 6 6", "M4 20h16"]),
     Sparkles: mk(["M12 2l1.6 5.4L19 9l-5.4 1.6L12 16l-1.6-5.4L5 9l5.4-1.6z", "M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"]),
     Check: mk(["M4 12l6 6 10-12"]),
@@ -182,6 +183,11 @@ const Icons = (() => {
       "M16 17s-1.5-2-4-2-4 2-4 2",
       "M8.3 12.5c-1 1.3-1 3 0 4.3",
       "M15.7 12.5c1 1.3 1 3 0 4.3",
+    ]),
+    ClogAntenna: mk([
+      "M3 16.5c0-1.6 1.4-2.7 3-2.7h1.3l4.7-4.3c1.9-1.7 4.6-1.9 6.6-.4l1 .8c1.1.9 1.5 2.4 1 3.7l-.5 1.4c-.5 1.4-1.8 2.3-3.3 2.3H5.8C4.3 17.3 3 18 3 16.5z",
+      "M12 9.3V4",
+      "M12 4m-1.4 0a1.4 1.4 0 1 0 2.8 0a1.4 1.4 0 1 0 -2.8 0",
     ]),
   };
 })();
@@ -225,7 +231,9 @@ const {
   Whistle,
   CrystalBall,
   ThumbsUpDown,
-  CryingFace
+  CryingFace,
+  Unlock,
+  ClogAntenna
 } = Icons;
 
 // ---------- helpers ----------
@@ -251,26 +259,111 @@ const outcomeLabel = {
   away: "Uit"
 };
 
-// Eerdere seizoenswinnaars van vóór deze app — handmatig bijgehouden.
-const HALL_OF_FAME = [{
-  name: "Frans",
-  count: 3
+// Automatische standaard-voorspelling per speler. Deze speler hoeft niets
+// te doen: zodra de organisator een nieuwe ronde aanmaakt, wordt voor elke
+// wedstrijd automatisch dit vakje ingevuld namens die speler. De speler kan
+// het tot de deadline nog gewoon zelf aanpassen — dit is alleen een
+// vooraf-ingevulde standaard, geen verplichting.
+const AUTO_PICK_DEFAULTS = {
+  "Rik": "draw"
+};
+
+// Eerdere seizoenswinnaars van vóór (of naast) deze app — handmatig
+// bijgehouden, per seizoen. "winner" is null als dat seizoen (nog) niet
+// bekend/toegekend is.
+const HALL_OF_FAME_GLAZENBOL = [{
+  season: "2015/2016",
+  winner: "Frans"
 }, {
-  name: "Maarten",
-  count: 2
+  season: "2016/2017",
+  winner: "Maarten"
 }, {
-  name: "Rik",
-  count: 2
+  season: "2017/2018",
+  winner: "Willem"
 }, {
-  name: "Joost",
-  count: 1
+  season: "2018/2019",
+  winner: "Rik"
 }, {
-  name: "Willem",
-  count: 1
+  season: "2019/2020",
+  winner: "Frans"
 }, {
-  name: "Ruud",
-  count: 1
+  season: "2020/2021",
+  winner: "Joost"
+}, {
+  season: "2021/2022",
+  winner: "Ruud"
+}, {
+  season: "2022/2023",
+  winner: "Maarten"
+}, {
+  season: "2023/2024",
+  winner: "Joost"
+}, {
+  season: "2024/2025",
+  winner: "Frans"
+}, {
+  season: "2025/2026",
+  winner: "Rik"
 }];
+
+// B100 Bokaal: aparte, handmatig toegekende prijs — los van de reguliere
+// competitie en los van de automatische B100-stand hierboven.
+const HALL_OF_FAME_B100 = [{
+  season: "2025/2026",
+  winner: "Danny"
+}];
+
+// Afwasborstel: poedelprijs, handmatig toegekend per seizoen.
+const HALL_OF_FAME_AFWASBORSTEL = [{
+  season: "2015/2016",
+  winner: "Ruud"
+}, {
+  season: "2016/2017",
+  winner: "Danny"
+}, {
+  season: "2017/2018",
+  winner: "Joost"
+}, {
+  season: "2018/2019",
+  winner: null
+}, {
+  season: "2019/2020",
+  winner: "Danny"
+}, {
+  season: "2020/2021",
+  winner: "Sjoerd"
+}, {
+  season: "2021/2022",
+  winner: "Peter"
+}, {
+  season: "2022/2023",
+  winner: "Peter"
+}, {
+  season: "2023/2024",
+  winner: "Peter"
+}, {
+  season: "2024/2025",
+  winner: "Willem"
+}, {
+  season: "2025/2026",
+  winner: "Willem"
+}];
+
+// Tellingen per speler, afgeleid uit HALL_OF_FAME_GLAZENBOL — gebruikt voor
+// de "Winnaar (all-time)"-teller in de prijzenkast.
+const HALL_OF_FAME = (() => {
+  const counts = {};
+  HALL_OF_FAME_GLAZENBOL.forEach(({
+    winner
+  }) => {
+    if (!winner) return;
+    counts[winner] = (counts[winner] || 0) + 1;
+  });
+  return Object.entries(counts).map(([name, count]) => ({
+    name,
+    count
+  }));
+})();
 const oddsKey = {
   home: "qHome",
   draw: "qDraw",
@@ -637,6 +730,40 @@ function computeSeasonWinCounts(seasons, rounds, predictions, players) {
   return counts;
 }
 
+// Zoals computeSeasonWinCounts, maar geeft per afgesloten seizoen ook de
+// naam van dat seizoen terug — zodat we kunnen tonen wélk seizoen iemand
+// gewonnen heeft, niet alleen hoe vaak.
+function computeSeasonWinYears(seasons, rounds, predictions, players) {
+  const results = [];
+  seasons.forEach(season => {
+    if (!season.closedAt) return;
+    const seasonRounds = rounds.filter(r => r.seasonId === season.id);
+    if (seasonRounds.length === 0) return;
+    const st = computeStandings(seasonRounds, predictions, players);
+    const topTotal = Math.max(...players.map(p => st.totals[p] || 0));
+    const winners = players.filter(p => (st.totals[p] || 0) === topTotal);
+    if (winners.length > 0) results.push({
+      season: season.name,
+      winners
+    });
+  });
+  return results;
+}
+
+// Combineert de handmatige Hall of Fame (vóór/naast deze app) met de
+// seizoenen die de app zelf heeft bijgehouden, tot één chronologische lijst
+// van { season, winners: [...] } — gebruikt in de prijzenkast en op Home.
+function computeGlazenbolHistory(seasons, rounds, predictions, players) {
+  const computed = computeSeasonWinYears(seasons, rounds, predictions, players);
+  const manualSeasons = new Set(HALL_OF_FAME_GLAZENBOL.map(h => h.season));
+  const manual = HALL_OF_FAME_GLAZENBOL.map(h => ({
+    season: h.season,
+    winners: h.winner ? [h.winner] : []
+  }));
+  const extra = computed.filter(c => !manualSeasons.has(c.season));
+  return [...manual, ...extra].sort((a, b) => a.season.localeCompare(b.season));
+}
+
 // B100 Bokaal: als een wedstrijd na de 85e minuut nog van stand wisselt
 // (georganiseerd aangevinkt bij de uitslag), wordt hier automatisch
 // uitgerekend wie daardoor winst of verlies misloopt — het verschil tussen
@@ -741,6 +868,24 @@ async function saveShared(key, value) {
     });
   } catch (e) {
     console.error("Opslaan mislukt", key, e);
+  }
+}
+// Schrijft alleen naar één specifiek (geneste) pad, in plaats van een hele
+// boom te overschrijven. Cruciaal voor voorspellingen: als twee spelers
+// vlak na elkaar opslaan, mag speler B's schrijfactie nooit de voorspelling
+// van speler A wegvegen doordat B nog een verouderde lokale kopie had van
+// de rest van de boom.
+async function saveSharedPath(path, value) {
+  try {
+    await fetch(`${window.FIREBASE_DB_URL}/${path}.json`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(value)
+    });
+  } catch (e) {
+    console.error("Opslaan mislukt", path, e);
   }
 }
 // Persoonlijke data (welke naam dit apparaat/browser is ingelogd) -> gewoon
@@ -869,6 +1014,7 @@ function JoopiesGlazenbol() {
     });
     return combined;
   }, [seasons, rounds, predictions, players]);
+  const glazenbolHistory = useMemo(() => computeGlazenbolHistory(seasons, rounds, predictions, players), [seasons, rounds, predictions, players]);
 
   // Voorkomt naam-mismatches: als de ingelogde naam niet (meer) exact in de
   // spelerslijst voorkomt (bv. "Frans" vs "Franske"), forceer opnieuw inloggen
@@ -884,7 +1030,7 @@ function JoopiesGlazenbol() {
   const sortedRounds = [...activeSeasonRounds].sort((a, b) => new Date(a.deadline) - new Date(b.deadline));
   const upcoming = sortedRounds.find(r => new Date(r.deadline).getTime() > now);
   const activeRound = upcoming || sortedRounds[sortedRounds.length - 1] || null;
-  const isLocked = activeRound ? new Date(activeRound.deadline).getTime() <= now : true;
+  const isLocked = activeRound ? !activeRound.forceOpen && new Date(activeRound.deadline).getTime() <= now : true;
 
   // Zolang er nog geen enkele organisator is aangewezen, mag iedereen het
   // Organisator-tabblad zien (bootstrap) — anders alleen wie op de lijst staat.
@@ -923,11 +1069,13 @@ function JoopiesGlazenbol() {
     activeRound: activeRound,
     isLocked: isLocked,
     allTimeStandings: allTimeStandings,
+    glazenbolHistory: glazenbolHistory,
     onGoPredict: () => setTab("predict")
   }), tab === "predict" && /*#__PURE__*/React.createElement(PredictTab, {
     round: activeRound,
     isLocked: isLocked,
     currentPlayer: currentPlayer,
+    players: players,
     predictions: predictions,
     onSave: async (roundId, playerPreds) => {
       const next = {
@@ -937,7 +1085,8 @@ function JoopiesGlazenbol() {
           [currentPlayer]: playerPreds
         }
       };
-      await persistPredictions(next);
+      setPredictions(next);
+      await saveSharedPath(`predictions/${roundId}/${currentPlayer}`, playerPreds);
       showToast("Voorspelling opgeslagen ✓");
     }
   }), tab === "standings" && /*#__PURE__*/React.createElement(StandingsTab, {
@@ -956,7 +1105,8 @@ function JoopiesGlazenbol() {
     funStats: funStats,
     players: players,
     allTimeFunStats: allTimeFunStats,
-    allTimeSeasonWins: allTimeSeasonWins
+    allTimeSeasonWins: allTimeSeasonWins,
+    glazenbolHistory: glazenbolHistory
   }), tab === "b100" && /*#__PURE__*/React.createElement(B100Tab, {
     players: players,
     rounds: rounds,
@@ -1124,6 +1274,30 @@ function JoopiesGlazenbol() {
     },
     onAddRound: async round => {
       await persistRounds([...rounds, round]);
+      // Vul automatisch de standaard-picks in (zie AUTO_PICK_DEFAULTS) voor
+      // spelers die dat hebben, zodat zij niets zelf hoeven te doen.
+      const autoPlayers = Object.keys(AUTO_PICK_DEFAULTS).filter(p => players.includes(p));
+      if (autoPlayers.length > 0 && round.matches?.length > 0) {
+        const autoPreds = {};
+        autoPlayers.forEach(p => {
+          const pick = AUTO_PICK_DEFAULTS[p];
+          const playerPreds = {};
+          round.matches.forEach(m => {
+            playerPreds[m.id] = {
+              pick
+            };
+          });
+          autoPreds[p] = playerPreds;
+        });
+        const nextPredictions = {
+          ...predictions,
+          [round.id]: {
+            ...(predictions[round.id] || {}),
+            ...autoPreds
+          }
+        };
+        await persistPredictions(nextPredictions);
+      }
       showToast("Ronde aangemaakt ✓");
     },
     onUpdateRound: async (roundId, patch) => {
@@ -1585,6 +1759,7 @@ function HomeTab({
   activeRound,
   isLocked,
   allTimeStandings,
+  glazenbolHistory,
   onGoPredict
 }) {
   const ranked = [...players].sort((a, b) => (standings.totals[b] || 0) - (standings.totals[a] || 0));
@@ -1641,131 +1816,7 @@ function HomeTab({
       textAlign: "center",
       maxWidth: 320
     }
-  }, "Eén euro fictieve inzet, de rest is eer & schande.")), activeRound ? /*#__PURE__*/React.createElement("div", {
-    className: "jgb-card"
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "jgb-h2"
-  }, activeRound.type === "super" ? "Superronde" : "Normale ronde", " — ", activeRound.name), isLocked ? /*#__PURE__*/React.createElement(Lock, {
-    size: 16,
-    color: "var(--text-muted)"
-  }) : /*#__PURE__*/React.createElement(CalendarClock, {
-    size: 16,
-    color: "var(--gold-accent)"
-  })), /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 6,
-      fontSize: 14
-    }
-  }, "Deadline: ", /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontFamily: "var(--font-mono)"
-    }
-  }, fmtDate(activeRound.deadline))), activeRound.jokerActive && /*#__PURE__*/React.createElement("div", {
-    style: {
-      marginTop: 6,
-      display: "flex",
-      alignItems: "center",
-      gap: 6,
-      color: "var(--gold-accent)",
-      fontSize: 13
-    }
-  }, /*#__PURE__*/React.createElement(Sparkles, {
-    size: 14
-  }), " Joker is actief deze ronde"), /*#__PURE__*/React.createElement("button", {
-    className: "jgb-btn primary",
-    style: {
-      marginTop: 12,
-      width: "100%"
-    },
-    onClick: onGoPredict,
-    disabled: isLocked
-  }, isLocked ? "Deadline verstreken" : "Voorspel nu")) : /*#__PURE__*/React.createElement("div", {
-    className: "jgb-card",
-    style: {
-      textAlign: "center",
-      color: "var(--text-muted)"
-    }
-  }, "Nog geen ronde aangemaakt. Vraag de organisator om te starten."), /*#__PURE__*/React.createElement("div", {
-    className: "jgb-card"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "jgb-h2",
-    style: {
-      marginBottom: 10
-    }
-  }, "Top 3 stand"), ranked.length === 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      color: "var(--text-muted)",
-      fontSize: 13
-    }
-  }, "Nog geen spelers."), ranked.slice(0, 3).map((p, i) => /*#__PURE__*/React.createElement("div", {
-    key: p,
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      padding: "7px 0",
-      borderBottom: i < 2 ? "1px solid var(--border)" : "none"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      display: "flex",
-      gap: 8,
-      alignItems: "center"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: ["#8A6100", "#7C8698", "#A9713C"][i],
-      fontFamily: "var(--font-mono)",
-      fontWeight: 700
-    }
-  }, i + 1), p), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontFamily: "var(--font-mono)",
-      color: (standings.totals[p] || 0) >= 0 ? "var(--green)" : "var(--red)"
-    }
-  }, fmtEuro(standings.totals[p] || 0))))), /*#__PURE__*/React.createElement("div", {
-    className: "jgb-card"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "jgb-h2",
-    style: {
-      marginBottom: 10
-    }
-  }, "All-time klassement (alle seizoenen)"), allTimeRanked.length === 0 && /*#__PURE__*/React.createElement("div", {
-    style: {
-      color: "var(--text-muted)",
-      fontSize: 13
-    }
-  }, "Nog geen spelers."), allTimeRanked.map((p, i) => /*#__PURE__*/React.createElement("div", {
-    key: p,
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      padding: "7px 0",
-      borderBottom: i < allTimeRanked.length - 1 ? "1px solid var(--border)" : "none"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      display: "flex",
-      gap: 8,
-      alignItems: "center"
-    }
-  }, /*#__PURE__*/React.createElement("span", {
-    style: {
-      color: i < 3 ? ["#8A6100", "#7C8698", "#A9713C"][i] : "var(--text-muted)",
-      fontFamily: "var(--font-mono)",
-      fontWeight: 700
-    }
-  }, i + 1), p), /*#__PURE__*/React.createElement("span", {
-    style: {
-      fontFamily: "var(--font-mono)",
-      color: (allTimeStandings?.totals?.[p] || 0) >= 0 ? "var(--green)" : "var(--red)"
-    }
-  }, fmtEuro(allTimeStandings?.totals?.[p] || 0))))), /*#__PURE__*/React.createElement("div", {
+  }, "Eén euro fictieve inzet, de rest is eer & schande.")), /*#__PURE__*/React.createElement("div", {
     className: "jgb-card"
   }, /*#__PURE__*/React.createElement("div", {
     className: "jgb-h2",
@@ -1907,7 +1958,133 @@ function HomeTab({
         color: "var(--text-muted)"
       }
     }, "· ", f.amount > 0 ? "+" : "", f.amount.toFixed(1)))))
-  }))));
+  }))), activeRound ? /*#__PURE__*/React.createElement("div", {
+    className: "jgb-card"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "jgb-h2"
+  }, activeRound.type === "super" ? "Superronde" : "Normale ronde", " — ", activeRound.name), isLocked ? /*#__PURE__*/React.createElement(Lock, {
+    size: 16,
+    color: "var(--text-muted)"
+  }) : /*#__PURE__*/React.createElement(CalendarClock, {
+    size: 16,
+    color: "var(--gold-accent)"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6,
+      fontSize: 14
+    }
+  }, "Deadline: ", /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "var(--font-mono)"
+    }
+  }, fmtDate(activeRound.deadline))), activeRound.jokerActive && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 6,
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      color: "var(--gold-accent)",
+      fontSize: 13
+    }
+  }, /*#__PURE__*/React.createElement(Sparkles, {
+    size: 14
+  }), " Joker is actief deze ronde"), /*#__PURE__*/React.createElement("button", {
+    className: "jgb-btn primary",
+    style: {
+      marginTop: 12,
+      width: "100%"
+    },
+    onClick: onGoPredict,
+    disabled: isLocked
+  }, isLocked ? "Deadline verstreken" : "Voorspel nu")) : /*#__PURE__*/React.createElement("div", {
+    className: "jgb-card",
+    style: {
+      textAlign: "center",
+      color: "var(--text-muted)"
+    }
+  }, "Nog geen ronde aangemaakt. Vraag de organisator om te starten."), /*#__PURE__*/React.createElement("div", {
+    className: "jgb-card"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "jgb-h2",
+    style: {
+      marginBottom: 10
+    }
+  }, "Top 3 stand"), ranked.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "var(--text-muted)",
+      fontSize: 13
+    }
+  }, "Nog geen spelers."), ranked.slice(0, 3).map((p, i) => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "7px 0",
+      borderBottom: i < 2 ? "1px solid var(--border)" : "none"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: ["#8A6100", "#7C8698", "#A9713C"][i],
+      fontFamily: "var(--font-mono)",
+      fontWeight: 700
+    }
+  }, i + 1), p), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      color: (standings.totals[p] || 0) >= 0 ? "var(--green)" : "var(--red)"
+    }
+  }, fmtEuro(standings.totals[p] || 0))))), /*#__PURE__*/React.createElement("div", {
+    className: "jgb-card"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "jgb-h2",
+    style: {
+      marginBottom: 10
+    }
+  }, "All-time klassement (alle seizoenen)"), allTimeRanked.length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "var(--text-muted)",
+      fontSize: 13
+    }
+  }, "Nog geen spelers."), allTimeRanked.map((p, i) => /*#__PURE__*/React.createElement("div", {
+    key: p,
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      padding: "7px 0",
+      borderBottom: i < allTimeRanked.length - 1 ? "1px solid var(--border)" : "none"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: i < 3 ? ["#8A6100", "#7C8698", "#A9713C"][i] : "var(--text-muted)",
+      fontFamily: "var(--font-mono)",
+      fontWeight: 700
+    }
+  }, i + 1), p), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontFamily: "var(--font-mono)",
+      color: (allTimeStandings?.totals?.[p] || 0) >= 0 ? "var(--green)" : "var(--red)"
+    }
+  }, fmtEuro(allTimeStandings?.totals?.[p] || 0))))), /*#__PURE__*/React.createElement(HallOfFameCard, {
+    glazenbolHistory: glazenbolHistory
+  }));
 }
 function StatRow({
   icon,
@@ -1939,11 +2116,178 @@ function StatRow({
   }, value)));
 }
 
+// ---------- HALL OF FAME (home) ----------
+// Eén rijtje per seizoen voor één prijs (Glazenbol, B100 Bokaal of
+// Afwasborstel). Seizoenen zonder bekende winnaar worden overgeslagen.
+function HallOfFameSection({
+  icon,
+  title,
+  entries
+}) {
+  const known = (entries || []).filter(e => e.winner);
+  const sorted = [...known].sort((a, b) => b.season.localeCompare(a.season));
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      fontSize: 13,
+      fontWeight: 700,
+      marginBottom: 6
+    }
+  }, icon, title), sorted.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "var(--text-muted)",
+      fontSize: 12
+    }
+  }, "Nog geen winnaar bekend.") : /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 3
+    }
+  }, sorted.map(e => /*#__PURE__*/React.createElement("div", {
+    key: e.season,
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      fontSize: 12
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "var(--text-muted)",
+      fontFamily: "var(--font-mono)"
+    }
+  }, e.season), /*#__PURE__*/React.createElement("span", null, e.winner)))));
+}
+
+// De drie "grote" jaarlijkse prijzen naast elkaar: de reguliere competitie
+// (Joopie's Glazenbol, incl. seizoenen die de app zelf bijhoudt), de B100
+// Bokaal en de Afwasborstel — de laatste twee zijn handmatig bijgehouden.
+function HallOfFameCard({
+  glazenbolHistory
+}) {
+  const glazenbolEntries = (glazenbolHistory || []).map(h => ({
+    season: h.season,
+    winner: h.winners && h.winners.length > 0 ? h.winners.join(" & ") : null
+  }));
+  return /*#__PURE__*/React.createElement("div", {
+    className: "jgb-card"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "jgb-h2",
+    style: {
+      marginBottom: 12,
+      display: "flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(Trophy, {
+    size: 14
+  }), " Hall of Fame"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 16
+    }
+  }, /*#__PURE__*/React.createElement(HallOfFameSection, {
+    icon: /*#__PURE__*/React.createElement(Trophy, {
+      size: 14,
+      color: "var(--gold-accent)"
+    }),
+    title: "Joopie's Glazenbol",
+    entries: glazenbolEntries
+  }), /*#__PURE__*/React.createElement(HallOfFameSection, {
+    icon: /*#__PURE__*/React.createElement(ClogAntenna, {
+      size: 14,
+      color: "var(--gold-accent)"
+    }),
+    title: "B100 Bokaal",
+    entries: HALL_OF_FAME_B100
+  }), /*#__PURE__*/React.createElement(HallOfFameSection, {
+    icon: /*#__PURE__*/React.createElement(Broom, {
+      size: 14,
+      color: "var(--gold-accent)"
+    }),
+    title: "Afwasborstel",
+    entries: HALL_OF_FAME_AFWASBORSTEL
+  })));
+}
+
+// Toont, zodra de deadline van een ronde verstreken is, per wedstrijd wat
+// alle spelers hebben voorspeld — zo blijft het spannend tot de deadline,
+// maar is daarna voor iedereen zichtbaar wie wat had ingevuld.
+function AllPicksList({
+  players,
+  round,
+  match,
+  predictions,
+  currentPlayer
+}) {
+  const rows = (players || []).map(pl => {
+    const pred = predictions?.[round.id]?.[pl]?.[match.id];
+    return {
+      player: pl,
+      pick: pred?.pick || null,
+      joker: !!pred?.joker
+    };
+  }).filter(r => r.pick);
+  if (rows.length === 0) return null;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10,
+      paddingTop: 10,
+      borderTop: "1px solid var(--border)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--text-muted)",
+      textTransform: "uppercase",
+      letterSpacing: "0.03em",
+      marginBottom: 6
+    }
+  }, "Ieders voorspelling"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 4
+    }
+  }, rows.map(r => {
+    const isCorrect = match.result ? r.pick === match.result : null;
+    return /*#__PURE__*/React.createElement("div", {
+      key: r.player,
+      style: {
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        fontSize: 13
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontWeight: r.player === currentPlayer ? 700 : 400,
+        display: "flex",
+        alignItems: "center",
+        gap: 4
+      }
+    }, r.player, r.joker && /*#__PURE__*/React.createElement(Sparkles, {
+      size: 11,
+      color: "var(--gold-accent)",
+      fill: "var(--gold-accent)"
+    })), /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontFamily: "var(--font-mono)",
+        color: isCorrect === null ? "var(--text-muted)" : isCorrect ? "var(--green)" : "var(--red)"
+      }
+    }, outcomeLabel[r.pick]));
+  })));
+}
+
 // ---------- PREDICT ----------
 function PredictTab({
   round,
   isLocked,
   currentPlayer,
+  players,
   predictions,
   onSave
 }) {
@@ -2014,7 +2358,17 @@ function PredictTab({
     }
   }, /*#__PURE__*/React.createElement(Lock, {
     size: 14
-  }), " Deadline verstreken op ", fmtDate(round.deadline), " — alleen ter inzage."), round.jokerActive && !isLocked && /*#__PURE__*/React.createElement("div", {
+  }), " Deadline verstreken op ", fmtDate(round.deadline), " — alleen ter inzage."), !isLocked && round.forceOpen && new Date(round.deadline).getTime() <= Date.now() && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      alignItems: "center",
+      color: "var(--gold-accent)",
+      fontSize: 13
+    }
+  }, /*#__PURE__*/React.createElement(Unlock, {
+    size: 14
+  }), " Heropend door de organisator — de deadline was al verstreken."), round.jokerActive && !isLocked && /*#__PURE__*/React.createElement("div", {
     style: {
       color: "var(--gold-accent)",
       fontSize: 12,
@@ -2106,7 +2460,13 @@ function PredictTab({
         joker: p.joker
       },
       hasResult: true
-    })));
+    })), isLocked && /*#__PURE__*/React.createElement(AllPicksList, {
+      players: players,
+      round: round,
+      match: m,
+      predictions: predictions,
+      currentPlayer: currentPlayer
+    }));
   }), !isLocked && /*#__PURE__*/React.createElement("button", {
     className: "jgb-btn primary",
     onClick: () => onSave(round.id, picks)
@@ -2327,7 +2687,8 @@ function MyResultsTab({
   funStats,
   players,
   allTimeFunStats,
-  allTimeSeasonWins
+  allTimeSeasonWins,
+  glazenbolHistory
 }) {
   if (!currentPlayer) {
     return /*#__PURE__*/React.createElement("div", {
@@ -2341,8 +2702,10 @@ function MyResultsTab({
   const renderMyTrophyCase = () => {
     // Winnaar: all-time, gebaseerd op daadwerkelijk afgesloten seizoenen
     // (plus de handmatige Hall of Fame van vóór deze app) — niet de
-    // huidige, nog lopende stand.
-    const myAllTimeWins = allTimeSeasonWins?.[currentPlayer] || 0;
+    // huidige, nog lopende stand. De jaartallen komen uit dezelfde
+    // gecombineerde geschiedenis als het Hall of Fame-blokje op Home.
+    const myWinSeasons = (glazenbolHistory || []).filter(h => h.winners.includes(currentPlayer)).map(h => h.season);
+    const myAllTimeWins = myWinSeasons.length || allTimeSeasonWins?.[currentPlayer] || 0;
 
     // Koningsronde: zowel dit seizoen als all-time (alle seizoenen samen).
     const myKingsSeason = funStats?.kingsRounds?.find(k => k.player === currentPlayer);
@@ -2367,7 +2730,18 @@ function MyResultsTab({
           color: "var(--gold-accent)"
         }),
         label: "Winnaar (all-time)",
-        value: `${myAllTimeWins}× seizoen gewonnen`
+        value: /*#__PURE__*/React.createElement("div", {
+          style: {
+            display: "flex",
+            flexDirection: "column",
+            gap: 2
+          }
+        }, /*#__PURE__*/React.createElement("span", null, `${myAllTimeWins}× seizoen gewonnen`), myWinSeasons.length > 0 && /*#__PURE__*/React.createElement("span", {
+          style: {
+            color: "var(--text-muted)",
+            fontSize: 12
+          }
+        }, myWinSeasons.join(", ")))
       }));
     }
     if (isTopKoningSeason || isTopKoningAllTime) {
@@ -2586,7 +2960,7 @@ function B100Tab({
 }) {
   const auto = useMemo(() => computeB100AutoStandings(rounds, predictions, players), [rounds, predictions, players]);
   const totals = auto.totals;
-  const ranked = [...players].sort((a, b) => (totals[b] || 0) - (totals[a] || 0));
+  const ranked = [...players].sort((a, b) => (totals[a] || 0) - (totals[b] || 0));
   const matchLabel = ev => {
     const round = rounds.find(r => r.id === ev.roundId);
     if (!round) return null;
@@ -3534,14 +3908,29 @@ function OrganizerTab({
       fontSize: 12,
       color: "var(--text-muted)"
     }
-  }, fmtDate(r.deadline), " ", r.jokerActive && "· Joker actief")), /*#__PURE__*/React.createElement(Trash2, {
+  }, fmtDate(r.deadline), " ", r.jokerActive && "· Joker actief", r.forceOpen && " · Heropend door organisator")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 10
+    }
+  }, new Date(r.deadline).getTime() <= Date.now() && /*#__PURE__*/React.createElement("button", {
+    className: `jgb-btn${r.forceOpen ? " primary" : ""}`,
+    style: {
+      fontSize: 12,
+      padding: "4px 10px"
+    },
+    onClick: () => onUpdateRound(r.id, {
+      forceOpen: !r.forceOpen
+    })
+  }, r.forceOpen ? "Sluiten" : "Heropenen"), /*#__PURE__*/React.createElement(Trash2, {
     size: 16,
     style: {
       cursor: "pointer",
       color: "var(--red)"
     },
     onClick: () => onDeleteRound(r.id)
-  })), /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 10,
       display: "flex",
