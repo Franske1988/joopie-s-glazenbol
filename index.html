@@ -25,17 +25,22 @@
      ===================================================================== -->
 <script>
   window.FIREBASE_DB_URL = "https://joopie-s-glazenbol-claude-default-rtdb.europe-west1.firebasedatabase.app";
+  // Web API key van je Firebase-project (Project instellingen → Algemeen →
+  // "Web API Key"). Nodig voor de anonieme authenticatie hieronder — zonder
+  // geldig token weigert de database nu lees/schrijf-verzoeken.
+  window.FIREBASE_API_KEY = "AIzaSyAChJZe6dM4G2lGdV-y4YtsWFA73Z8pvb0";
 </script>
 
 <div id="root"></div>
 
 <script>
-  if (window.FIREBASE_DB_URL.includes("YOUR-PROJECT-ID")) {
+  if (window.FIREBASE_DB_URL.includes("YOUR-PROJECT-ID") || window.FIREBASE_API_KEY.includes("YOUR-API-KEY")) {
     document.getElementById("root").innerHTML =
       '<div id="setup-warning">' +
       '<h2>Nog niet ingesteld</h2>' +
-      '<p>Deze site is nog niet gekoppeld aan een database. Open <code>index.html</code> ' +
-      'en vul bovenaan je eigen Firebase Database-URL in bij <code>FIREBASE_DB_URL</code>.</p>' +
+      '<p>Deze site is nog niet (volledig) gekoppeld aan een database. Open <code>index.html</code> ' +
+      'en vul bovenaan je eigen Firebase Database-URL <em>en</em> Web API Key in bij ' +
+      '<code>FIREBASE_DB_URL</code> / <code>FIREBASE_API_KEY</code>.</p>' +
       '<p>Volg de stappen in <code>instructies.md</code> (5 minuten, gratis, geen creditcard nodig).</p>' +
       '</div>';
   }
@@ -856,9 +861,70 @@ function computePlayerMatchStats(rounds, perMatch, players) {
 // FIREBASE_DB_URL wordt bovenaan index.html ingesteld (zie instructies.md).
 // Gedeelde data (spelers, rondes, voorspellingen) -> Firebase Realtime Database,
 // zodat iedereen die de site opent dezelfde data ziet.
+
+// ---------- anonieme authenticatie ----------
+// De databaseregels eisen tegenwoordig "auth != null" (zie instructies.md),
+// dus elk verzoek moet een geldig Firebase-token meesturen. We loggen
+// daarom onzichtbaar anoniem in — er is geen inlogscherm, spelers merken
+// hier niets van. Het refresh-token wordt lokaal onthouden zodat hetzelfde
+// anonieme account hergebruikt wordt in plaats van er bij elk bezoek een
+// nieuw aan te maken.
+let _authTokenCache = null; // { idToken, expiresAt }
+async function ensureAuthToken() {
+  if (_authTokenCache && _authTokenCache.expiresAt > Date.now() + 60000) {
+    return _authTokenCache.idToken;
+  }
+  const apiKey = window.FIREBASE_API_KEY;
+  const storedRefreshToken = loadLocal("firebaseRefreshToken", null);
+  if (storedRefreshToken) {
+    try {
+      const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${apiKey}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded"
+        },
+        body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(storedRefreshToken)}`
+      });
+      if (res.ok) {
+        const data = await res.json();
+        _authTokenCache = {
+          idToken: data.id_token,
+          expiresAt: Date.now() + Number(data.expires_in || 3600) * 1000
+        };
+        saveLocal("firebaseRefreshToken", data.refresh_token);
+        return _authTokenCache.idToken;
+      }
+    } catch (e) {
+      console.error("Token vernieuwen mislukt, nieuw anoniem account aanmaken", e);
+    }
+  }
+  // Geen (geldig) opgeslagen token: nieuw anoniem account aanmaken.
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=${apiKey}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      returnSecureToken: true
+    })
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    console.error("Anoniem inloggen bij Firebase mislukt", data);
+    throw new Error("Kon niet anoniem inloggen bij Firebase.");
+  }
+  _authTokenCache = {
+    idToken: data.idToken,
+    expiresAt: Date.now() + Number(data.expiresIn || 3600) * 1000
+  };
+  saveLocal("firebaseRefreshToken", data.refreshToken);
+  return _authTokenCache.idToken;
+}
+
 async function loadShared(key, fallback) {
   try {
-    const res = await fetch(`${window.FIREBASE_DB_URL}/${key}.json`);
+    const token = await ensureAuthToken();
+    const res = await fetch(`${window.FIREBASE_DB_URL}/${key}.json?auth=${token}`);
     if (!res.ok) return fallback;
     const data = await res.json();
     return data === null || data === undefined ? fallback : data;
@@ -869,7 +935,8 @@ async function loadShared(key, fallback) {
 }
 async function saveShared(key, value) {
   try {
-    await fetch(`${window.FIREBASE_DB_URL}/${key}.json`, {
+    const token = await ensureAuthToken();
+    await fetch(`${window.FIREBASE_DB_URL}/${key}.json?auth=${token}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json"
@@ -887,7 +954,8 @@ async function saveShared(key, value) {
 // de rest van de boom.
 async function saveSharedPath(path, value) {
   try {
-    await fetch(`${window.FIREBASE_DB_URL}/${path}.json`, {
+    const token = await ensureAuthToken();
+    await fetch(`${window.FIREBASE_DB_URL}/${path}.json?auth=${token}`, {
       method: "PUT",
       headers: {
         "Content-Type": "application/json"
