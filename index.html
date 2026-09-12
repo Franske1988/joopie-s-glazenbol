@@ -406,15 +406,11 @@ const ODDS_LEAGUES = {
   "Spanje": "soccer_spain_la_liga",
   "Duitsland": "soccer_germany_bundesliga",
   "Italië": "soccer_italy_serie_a",
-  "België": "soccer_belgium_first_div",
   "Portugal": "soccer_portugal_primeira_liga",
-  "Keuken Kampioen Divisie": "soccer_netherlands_eerste_divisie",
   "Frankrijk": "soccer_france_ligue_one",
   "Eredivisie": "soccer_netherlands_eredivisie",
   "Champions League": "soccer_uefa_champs_league",
-  "Conference League": "soccer_uefa_europa_conference_league",
-  "WK-kwalificatie": "soccer_fifa_world_cup_qualifiers_europe",
-  "EK-kwalificatie": "soccer_uefa_european_championship_qualification"
+  "Conference League": "soccer_uefa_europa_conference_league"
 };
 
 // Bekende "grote clubs" over de ondersteunde competities heen — gebruikt
@@ -3387,17 +3383,31 @@ function OrganizerTab({
       setOddsLoading(false);
     }
   };
-  const pickOtherMatches = () => {
-    if (!form || !oddsPool) return;
-    const nextOffset = oddsOffset + form.matches.length;
-    const picked = pickMatchesByStrategy(oddsPool, form.matches.length, oddsStrategy, nextOffset);
-    if (picked.length === 0) {
-      setOddsError("Geen andere wedstrijden meer beschikbaar voor deze strategie.");
-      return;
-    }
-    setOddsOffset(nextOffset);
+  const pickOtherMatches = async () => {
+    if (!form) return;
+    setOddsLoading(true);
     setOddsError("");
-    fillFormWithMatches(picked);
+    try {
+      const matches = await fetchAllOdds();
+      const nextOffset = oddsOffset + form.matches.length;
+      let picked = pickMatchesByStrategy(matches, form.matches.length, oddsStrategy, nextOffset);
+      if (picked.length === 0) {
+        // Verse lijst kan korter zijn dan verwacht — begin dan gewoon opnieuw vanaf 0.
+        picked = pickMatchesByStrategy(matches, form.matches.length, oddsStrategy, 0);
+      }
+      if (picked.length === 0) {
+        setOddsError("Geen wedstrijden gevonden die aan deze strategie voldoen. Probeer een andere strategie.");
+        return;
+      }
+      setOddsPool(matches);
+      setOddsOffset(nextOffset);
+      fillFormWithMatches(picked);
+    } catch (err) {
+      console.error(err);
+      setOddsError("Er ging iets mis bij het ophalen van de odds.");
+    } finally {
+      setOddsLoading(false);
+    }
   };
 
   const activeSeasonRounds = activeSeason ? rounds.filter(r => r.seasonId === activeSeason.id) : [];
@@ -3733,7 +3743,7 @@ function OrganizerTab({
     type: "button",
     disabled: oddsLoading,
     onClick: pickOtherMatches
-  }, "Andere wedstrijden"), oddsError && /*#__PURE__*/React.createElement("div", {
+  }, oddsLoading ? "Bezig met ophalen…" : "Andere wedstrijden"), oddsError && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: "var(--danger, #d9534f)",
