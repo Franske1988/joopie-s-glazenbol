@@ -29,6 +29,16 @@
   // "Web API Key"). Nodig voor de anonieme authenticatie hieronder — zonder
   // geldig token weigert de database nu lees/schrijf-verzoeken.
   window.FIREBASE_API_KEY = "AIzaSyAChJZe6dM4G2lGdV-y4YtsWFA73Z8pvb0";
+
+  // API key voor The Odds API (https://the-odds-api.com/), gebruikt door de
+  // "Wedstrijden ophalen"-knop in het Organisator-paneel.
+  // LET OP: omdat deze site zonder eigen server draait (GitHub Pages), staat
+  // deze key gewoon zichtbaar in de broncode — dat is bewust de gratis/simpele
+  // route. Iedereen die de pagina bekijkt kan de key in principe zien en
+  // gebruiken. Houd daar rekening mee: gebruik een gratis-tier key, deel de
+  // repo niet als "geheim", en regenereer de key op the-odds-api.com als je
+  // ooit denkt dat er misbruik van wordt gemaakt.
+  window.ODDS_API_KEY = "8b320189653b4984beb289f94cc31853";
 </script>
 
 <div id="root"></div>
@@ -383,6 +393,90 @@ const parseOdds = v => {
   const n = Number(String(v).trim().replace(",", "."));
   return Number.isFinite(n) ? n : 0;
 };
+
+// ---------- Odds ophalen (The Odds API) ----------
+// Alle competities die de "Wedstrijden ophalen"-knop kan doorzoeken.
+// LET OP: controleer sport-keys af en toe tegen de actuele lijst op
+// https://api.the-odds-api.com/v4/sports/?apiKey=JOUW_KEY — vooral de
+// kwalificatiereeksen staan alleen in de lijst als er binnenkort
+// wedstrijden gepland zijn.
+const ODDS_LEAGUES = {
+  "Engeland": "soccer_epl",
+  "Spanje": "soccer_spain_la_liga",
+  "Duitsland": "soccer_germany_bundesliga",
+  "Italië": "soccer_italy_serie_a",
+  "België": "soccer_belgium_first_div",
+  "Portugal": "soccer_portugal_primeira_liga",
+  "Keuken Kampioen Divisie": "soccer_netherlands_eerste_divisie",
+  "Frankrijk": "soccer_france_ligue_one",
+  "Eredivisie": "soccer_netherlands_eredivisie",
+  "Champions League": "soccer_uefa_champs_league",
+  "Conference League": "soccer_uefa_europa_conference_league",
+  "WK-kwalificatie": "soccer_fifa_world_cup_qualifiers_europe",
+  "EK-kwalificatie": "soccer_uefa_european_championship_qualification"
+};
+
+// Haalt odds op voor één competitie en zet ze om naar een simpel formaat
+// met gemiddelde 1/X/2-quoteringen over de beschikbare bookmakers.
+async function fetchOddsForLeague(leagueName, sportKey, apiKey) {
+  const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/` + `?apiKey=${apiKey}&regions=eu&markets=h2h&oddsFormat=decimal`;
+  let resp;
+  try {
+    resp = await fetch(url);
+  } catch (err) {
+    console.warn(`Netwerkfout bij ophalen odds voor ${leagueName}`, err);
+    return [];
+  }
+  if (!resp.ok) {
+    console.warn(`Odds API gaf foutstatus voor ${leagueName} (${sportKey}): ${resp.status}`);
+    return [];
+  }
+  const data = await resp.json();
+  return data.map(event => {
+    const homeOdds = [],
+      drawOdds = [],
+      awayOdds = [];
+    for (const bookmaker of event.bookmakers || []) {
+      const market = (bookmaker.markets || []).find(m => m.key === "h2h");
+      if (!market) continue;
+      for (const outcome of market.outcomes) {
+        if (outcome.name === event.home_team) homeOdds.push(outcome.price);else if (outcome.name === event.away_team) awayOdds.push(outcome.price);else drawOdds.push(outcome.price);
+      }
+    }
+    const avg = arr => arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null;
+    return {
+      id: event.id,
+      league: leagueName,
+      home: event.home_team,
+      away: event.away_team,
+      commenceTime: event.commence_time,
+      qHome: avg(homeOdds),
+      qDraw: avg(drawOdds),
+      qAway: avg(awayOdds)
+    };
+  });
+}
+
+// Haalt odds op voor een set competities (standaard: allemaal) en geeft
+// gewoon een platte lijst van wedstrijden terug — de aanroeper bepaalt zelf
+// hoeveel en welke daarvan gebruikt worden.
+async function fetchAllOdds(leagueNames) {
+  const apiKey = window.ODDS_API_KEY;
+  const names = leagueNames && leagueNames.length ? leagueNames : Object.keys(ODDS_LEAGUES);
+  const results = await Promise.all(names.filter(name => ODDS_LEAGUES[name]).map(name => fetchOddsForLeague(name, ODDS_LEAGUES[name], apiKey)));
+  return results.flat().filter(m => m.qHome && m.qAway);
+}
+
+// Kiest de N "spannendste" (kleinste verschil thuis/uit-odds) of grootste-
+// favoriet wedstrijden uit een lijst, afhankelijk van de strategie.
+function pickMatchesByStrategy(matches, count, strategy) {
+  const scored = matches.map(m => ({
+    ...m,
+    score: strategy === "favorites" ? Math.min(m.qHome, m.qAway) : Math.abs(m.qHome - m.qAway)
+  }));
+  scored.sort((a, b) => a.score - b.score);
+  return scored.slice(0, count);
+}
 
 // Klein, herbruikbaar label dat in één oogopslag laat zien of een voorspelling
 // goed, fout, of niet ingevuld was.
@@ -3228,6 +3322,38 @@ function OrganizerTab({
   const [importError, setImportError] = useState("");
   const [importing, setImporting] = useState(false);
   const [importFileName, setImportFileName] = useState("");
+  const [oddsLoading, setOddsLoading] = useState(false);
+  const [oddsError, setOddsError] = useState("");
+  const [oddsStrategy, setOddsStrategy] = useState("closest");
+  const fetchOddsIntoForm = async () => {
+    if (!form) return;
+    setOddsLoading(true);
+    setOddsError("");
+    try {
+      const matches = await fetchAllOdds();
+      if (matches.length === 0) {
+        setOddsError("Geen wedstrijden met odds gevonden. Probeer het later opnieuw.");
+        return;
+      }
+      const picked = pickMatchesByStrategy(matches, form.matches.length, oddsStrategy);
+      setForm(f => ({
+        ...f,
+        matches: f.matches.map((m, idx) => picked[idx] ? {
+          ...m,
+          home: picked[idx].home,
+          away: picked[idx].away,
+          qHome: String(picked[idx].qHome.toFixed(2)).replace(".", ","),
+          qDraw: picked[idx].qDraw ? String(picked[idx].qDraw.toFixed(2)).replace(".", ",") : "",
+          qAway: String(picked[idx].qAway.toFixed(2)).replace(".", ",")
+        } : m)
+      }));
+    } catch (err) {
+      console.error(err);
+      setOddsError("Er ging iets mis bij het ophalen van de odds.");
+    } finally {
+      setOddsLoading(false);
+    }
+  };
   const activeSeasonRounds = activeSeason ? rounds.filter(r => r.seasonId === activeSeason.id) : [];
   const archivedSeasons = [...seasons].filter(s => s.closedAt).sort((a, b) => new Date(b.closedAt) - new Date(a.closedAt));
   const handleExcelFile = e => {
@@ -3525,7 +3651,39 @@ function OrganizerTab({
       ...form,
       jokerActive: e.target.checked
     })
-  }), "Joker activeren deze ronde"), form.matches.map((m, idx) => /*#__PURE__*/React.createElement("div", {
+  }), "Joker activeren deze ronde"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap",
+      border: "1px dashed var(--border)",
+      borderRadius: 10,
+      padding: 10
+    }
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "jgb-input",
+    style: {
+      width: "auto"
+    },
+    value: oddsStrategy,
+    onChange: e => setOddsStrategy(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "closest"
+  }, "Spannendste duels"), /*#__PURE__*/React.createElement("option", {
+    value: "favorites"
+  }, "Grootste favorieten")), /*#__PURE__*/React.createElement("button", {
+    className: "jgb-btn",
+    type: "button",
+    disabled: oddsLoading,
+    onClick: fetchOddsIntoForm
+  }, oddsLoading ? "Bezig met ophalen…" : "Wedstrijden ophalen via odds-API"), oddsError && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--danger, #d9534f)",
+      width: "100%"
+    }
+  }, oddsError)), form.matches.map((m, idx) => /*#__PURE__*/React.createElement("div", {
     key: m.id,
     style: {
       border: "1px solid var(--border)",
