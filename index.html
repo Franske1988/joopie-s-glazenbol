@@ -421,8 +421,16 @@ const BIG_CLUBS = ["Real Madrid", "Barcelona", "Atletico Madrid", "Manchester Ci
 
 // Haalt odds op voor één competitie en zet ze om naar een simpel formaat
 // met gemiddelde 1/X/2-quoteringen over de beschikbare bookmakers.
+// Format een Date als ISO8601 zonder milliseconden, zoals The Odds API
+// verwacht voor commenceTimeFrom/commenceTimeTo (bv. "2024-05-01T12:00:00Z").
+const toOddsApiTimestamp = date => date.toISOString().replace(/\.\d{3}Z$/, "Z");
+
 async function fetchOddsForLeague(leagueName, sportKey, apiKey) {
-  const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/` + `?apiKey=${apiKey}&regions=eu&markets=h2h&oddsFormat=decimal`;
+  const now = new Date();
+  const in4Days = new Date(now.getTime() + 4 * 24 * 60 * 60 * 1000);
+  const commenceTimeFrom = toOddsApiTimestamp(now);
+  const commenceTimeTo = toOddsApiTimestamp(in4Days);
+  const url = `https://api.the-odds-api.com/v4/sports/${sportKey}/odds/` + `?apiKey=${apiKey}&regions=eu&markets=h2h&oddsFormat=decimal` + `&commenceTimeFrom=${commenceTimeFrom}&commenceTimeTo=${commenceTimeTo}`;
   let resp;
   try {
     resp = await fetch(url);
