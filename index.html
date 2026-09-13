@@ -417,7 +417,10 @@ const ODDS_LEAGUES = {
 // door de strategie "Grote clubs + spannend". Namen moeten overeenkomen met
 // hoe The Odds API de teamnaam schrijft; vul gerust aan als er een favoriet
 // van de groep ontbreekt.
-const BIG_CLUBS = ["Real Madrid", "Barcelona", "Atletico Madrid", "Manchester City", "Manchester United", "Liverpool", "Arsenal", "Chelsea", "Tottenham Hotspur", "Bayern Munich", "Borussia Dortmund", "RB Leipzig", "Paris Saint Germain", "Juventus", "Inter Milan", "AC Milan", "Napoli", "AS Roma", "Ajax", "PSV Eindhoven", "Feyenoord", "Benfica", "Porto", "Sporting CP", "Anderlecht", "Club Brugge"];
+// Voor de meeste competities telt elk team mee (het zijn allemaal
+// topcompetities). Alleen bij Portugal beperken we tot de topclubs,
+// omdat die competitie qua niveau meer uiteenloopt.
+const PORTUGAL_TOP_CLUBS = ["Benfica", "Porto", "Sporting CP"];
 
 // Haalt odds op voor één competitie en zet ze om naar een simpel formaat
 // met gemiddelde 1/X/2-quoteringen over de beschikbare bookmakers.
@@ -478,29 +481,25 @@ async function fetchAllOdds(leagueNames) {
   return results.flat().filter(m => m.qHome && m.qAway);
 }
 
-// Filtert en scoort een lijst wedstrijden volgens de gekozen strategie.
-// Retourneert alle passende wedstrijden, gesorteerd van "beste" naar
-// "minst passende" match voor die strategie — de aanroeper pakt er zelf
-// een blok van (voor de "andere wedstrijden"-knop).
-function filterAndScoreMatches(matches, strategy) {
-  let pool = matches;
-  if (strategy === "big_clubs") {
-    pool = pool.filter(m => (BIG_CLUBS.includes(m.home) || BIG_CLUBS.includes(m.away)) && Math.min(m.qHome, m.qAway) >= 1.8 && Math.min(m.qHome, m.qAway) <= 3.4);
-  }
+// Filtert wedstrijden op "grote club + spannend" (odds van de sterkste kant
+// tussen 1,8 en 3,4) en sorteert ze van spannendst naar minst spannend.
+// Retourneert alle passende wedstrijden — de aanroeper pakt er zelf een
+// blok van (voor de "andere wedstrijden"-knop).
+function filterAndScoreMatches(matches) {
+  const pool = matches.filter(m => (m.league !== "Portugal" || PORTUGAL_TOP_CLUBS.includes(m.home) || PORTUGAL_TOP_CLUBS.includes(m.away)) && Math.min(m.qHome, m.qAway) >= 1.8 && Math.min(m.qHome, m.qAway) <= 3.4);
   const scored = pool.map(m => ({
     ...m,
-    score: strategy === "favorites" ? Math.min(m.qHome, m.qAway) : Math.abs(m.qHome - m.qAway)
+    score: Math.abs(m.qHome - m.qAway)
   }));
   scored.sort((a, b) => a.score - b.score);
   return scored;
 }
 
-// Kiest de N "spannendste" (kleinste verschil thuis/uit-odds), grootste-
-// favoriet, of "grote clubs + spannend" wedstrijden uit een lijst,
-// afhankelijk van de strategie. "offset" laat de aanroeper door de
-// gesorteerde lijst heen bladeren (voor de "andere wedstrijden"-knop).
-function pickMatchesByStrategy(matches, count, strategy, offset) {
-  const scored = filterAndScoreMatches(matches, strategy);
+// Kiest N wedstrijden met grote clubs en spannende odds uit een lijst.
+// "offset" laat de aanroeper door de gesorteerde lijst heen bladeren
+// (voor de "andere wedstrijden"-knop).
+function pickMatches(matches, count, offset) {
+  const scored = filterAndScoreMatches(matches);
   if (scored.length === 0) return [];
   const start = (offset || 0) % scored.length;
   const wrapped = scored.slice(start).concat(scored.slice(0, start));
@@ -730,6 +729,7 @@ function computeFunStats(rounds, players, perMatch, perRound) {
   const now = new Date();
   const curMonth = now.getMonth();
   const curYear = now.getFullYear();
+  const monthlyTotals = {}; // "2026-8" -> { player: totaalbedrag }
   rounds.forEach(round => {
     const fullyResolved = round.matches.length > 0 && round.matches.every(m => m.result);
 
@@ -746,8 +746,11 @@ function computeFunStats(rounds, players, perMatch, perRound) {
     if (!fullyResolved) return;
     const deadlineDate = new Date(round.deadline);
     const isThisMonth = deadlineDate.getMonth() === curMonth && deadlineDate.getFullYear() === curYear;
+    const monthKey = `${deadlineDate.getFullYear()}-${deadlineDate.getMonth()}`;
+    if (!monthlyTotals[monthKey]) monthlyTotals[monthKey] = {};
     players.forEach(player => {
       const amount = perRound[round.id]?.[player] ?? 0;
+      monthlyTotals[monthKey][player] = (monthlyTotals[monthKey][player] || 0) + amount;
       if (!bestEver || amount > bestEver.amount) bestEver = {
         player,
         amount,
@@ -827,20 +830,37 @@ function computeFunStats(rounds, players, perMatch, perRound) {
     count
   })) : [];
   const zeroEntries = Object.entries(zeroCount).sort((a, b) => b[1] - a[1]);
-  const topZeroCount = zeroEntries[0]?.[1] ?? 0;
-  const glazenwisser = topZeroCount > 0 ? zeroEntries.filter(([, c]) => c === topZeroCount).map(([player, count]) => ({
+  const glazenwisser = zeroEntries.filter(([, c]) => c > 0).map(([player, count]) => ({
     player,
     count
-  })) : [];
+  }));
   const sleepEntries = Object.entries(sleepCount).sort((a, b) => b[1] - a[1]);
   const topSleepCount = sleepEntries[0]?.[1] ?? 0;
   const slaperd = topSleepCount > 0 ? sleepEntries.filter(([, c]) => c === topSleepCount).map(([player, count]) => ({
     player,
     count
   })) : [];
+  const DUTCH_MONTHS = ["januari", "februari", "maart", "april", "mei", "juni", "juli", "augustus", "september", "oktober", "november", "december"];
+  const monthlyWinners = Object.keys(monthlyTotals).sort((a, b) => {
+    const [ay, am] = a.split("-").map(Number);
+    const [by, bm] = b.split("-").map(Number);
+    return ay - by || am - bm;
+  }).map(monthKey => {
+    const [year, month] = monthKey.split("-").map(Number);
+    const entries = Object.entries(monthlyTotals[monthKey]);
+    const maxAmount = Math.max(...entries.map(([, a]) => a));
+    const winners = entries.filter(([, a]) => a === maxAmount).map(([player]) => player);
+    return {
+      monthKey,
+      label: `${DUTCH_MONTHS[month]} ${year}`,
+      players: winners,
+      amount: maxAmount
+    };
+  });
   return {
     bestEver,
     bestMonth,
+    monthlyWinners,
     kingsRounds,
     mostCorrect,
     glazenwisser,
@@ -2074,6 +2094,25 @@ function HomeTab({
     }),
     label: `Hoogste score in ${monthName}`,
     value: funStats.bestMonth ? `${funStats.bestMonth.player} · ${fmtEuro(funStats.bestMonth.amount)} (${funStats.bestMonth.roundName})` : "Nog geen afgeronde ronde deze maand"
+  }), /*#__PURE__*/React.createElement(StatRow, {
+    icon: /*#__PURE__*/React.createElement(CalendarDays, {
+      size: 16,
+      color: "var(--gold-accent)"
+    }),
+    label: "Maandwinnaars dit seizoen",
+    value: funStats.monthlyWinners.length === 0 ? "Nog geen maand afgerond" : /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 2
+      }
+    }, funStats.monthlyWinners.map(mw => /*#__PURE__*/React.createElement("span", {
+      key: mw.monthKey
+    }, mw.label, ": ", mw.players.join(" & "), " ", /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "var(--text-muted)"
+      }
+    }, "· ", fmtEuro(mw.amount)))))
   }), /*#__PURE__*/React.createElement(StatRow, {
     icon: /*#__PURE__*/React.createElement(Crown, {
       size: 16,
@@ -3354,7 +3393,6 @@ function OrganizerTab({
   const [importFileName, setImportFileName] = useState("");
   const [oddsLoading, setOddsLoading] = useState(false);
   const [oddsError, setOddsError] = useState("");
-  const [oddsStrategy, setOddsStrategy] = useState("closest");
   const [oddsPool, setOddsPool] = useState(null); // laatst opgehaalde ruwe odds, voor "andere wedstrijden"
   const [oddsOffset, setOddsOffset] = useState(0);
   const fillFormWithMatches = picked => {
@@ -3378,9 +3416,9 @@ function OrganizerTab({
       const matches = await fetchAllOdds();
       setOddsPool(matches);
       setOddsOffset(0);
-      const picked = pickMatchesByStrategy(matches, form.matches.length, oddsStrategy, 0);
+      const picked = pickMatches(matches, form.matches.length, 0);
       if (picked.length === 0) {
-        setOddsError("Geen wedstrijden gevonden die aan deze strategie voldoen. Probeer een andere strategie of later opnieuw.");
+        setOddsError("Geen wedstrijden met een grote club binnen odds 1,8-3,4 gevonden. Probeer het later opnieuw.");
         return;
       }
       fillFormWithMatches(picked);
@@ -3398,13 +3436,13 @@ function OrganizerTab({
     try {
       const matches = await fetchAllOdds();
       const nextOffset = oddsOffset + form.matches.length;
-      let picked = pickMatchesByStrategy(matches, form.matches.length, oddsStrategy, nextOffset);
+      let picked = pickMatches(matches, form.matches.length, nextOffset);
       if (picked.length === 0) {
         // Verse lijst kan korter zijn dan verwacht — begin dan gewoon opnieuw vanaf 0.
-        picked = pickMatchesByStrategy(matches, form.matches.length, oddsStrategy, 0);
+        picked = pickMatches(matches, form.matches.length, 0);
       }
       if (picked.length === 0) {
-        setOddsError("Geen wedstrijden gevonden die aan deze strategie voldoen. Probeer een andere strategie.");
+        setOddsError("Geen wedstrijden met een grote club binnen odds 1,8-3,4 gevonden.");
         return;
       }
       setOddsPool(matches);
@@ -3725,23 +3763,7 @@ function OrganizerTab({
       borderRadius: 10,
       padding: 10
     }
-  }, /*#__PURE__*/React.createElement("select", {
-    className: "jgb-input",
-    style: {
-      width: "auto"
-    },
-    value: oddsStrategy,
-    onChange: e => {
-      setOddsStrategy(e.target.value);
-      setOddsOffset(0);
-    }
-  }, /*#__PURE__*/React.createElement("option", {
-    value: "closest"
-  }, "Spannendste duels"), /*#__PURE__*/React.createElement("option", {
-    value: "favorites"
-  }, "Grootste favorieten"), /*#__PURE__*/React.createElement("option", {
-    value: "big_clubs"
-  }, "Grote clubs + spannend (1,8-3,4)")), /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("button", {
     className: "jgb-btn",
     type: "button",
     disabled: oddsLoading,
