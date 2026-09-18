@@ -1750,6 +1750,7 @@ function TopBar({
   const [pendingName, setPendingName] = useState("");
   const [pin, setPin] = useState("");
   const [error, setError] = useState(false);
+  const [loginSearch, setLoginSearch] = useState("");
   const trySelect = name => {
     setError(false);
     setPin("");
@@ -1824,21 +1825,31 @@ function TopBar({
       fontSize: 11
     },
     onClick: onLogout
-  }, "Uitloggen")) : !pendingName ? /*#__PURE__*/React.createElement("select", {
-    className: "jgb-select",
+  }, "Uitloggen")) : !pendingName ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("input", {
+    className: "jgb-input",
     style: {
-      width: "auto",
+      width: 140,
       fontSize: 13,
       padding: "7px 9px"
     },
-    value: "",
-    onChange: e => e.target.value && trySelect(e.target.value)
-  }, /*#__PURE__*/React.createElement("option", {
-    value: ""
-  }, "Wie ben jij?"), players.map(p => /*#__PURE__*/React.createElement("option", {
+    list: "jgb-players-list",
+    placeholder: "Wie ben jij? (zoek)",
+    value: loginSearch,
+    onChange: e => {
+      const val = e.target.value;
+      setLoginSearch(val);
+      const match = players.find(p => p.toLowerCase() === val.trim().toLowerCase());
+      if (match) {
+        trySelect(match);
+        setLoginSearch("");
+      }
+    }
+  }), /*#__PURE__*/React.createElement("datalist", {
+    id: "jgb-players-list"
+  }, players.map(p => /*#__PURE__*/React.createElement("option", {
     key: p,
     value: p
-  }, p))) : /*#__PURE__*/React.createElement("div", {
+  })))) : /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -1882,6 +1893,7 @@ function TopBar({
       setPendingName("");
       setPin("");
       setError(false);
+      setLoginSearch("");
     }
   })), pendingName && error && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -2361,9 +2373,7 @@ function HomeTab({
       fontFamily: "var(--font-mono)",
       color: (allTimeStandings?.totals?.[p] || 0) >= 0 ? "var(--green)" : "var(--red)"
     }
-  }, fmtEuro(allTimeStandings?.totals?.[p] || 0))))), /*#__PURE__*/React.createElement(HallOfFameCard, {
-    glazenbolHistory: glazenbolHistory
-  }));
+  }, fmtEuro(allTimeStandings?.totals?.[p] || 0))))));
 }
 function StatRow({
   icon,
@@ -2772,6 +2782,7 @@ function StandingsTab({
   const [showGroupForm, setShowGroupForm] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupMembers, setNewGroupMembers] = useState([]);
+  const [memberSearch, setMemberSearch] = useState("");
   useEffect(() => {
     // volg het actieve seizoen automatisch, tenzij er nog geen keuze is gemaakt
     if (activeSeasonId && !selectedSeasonId) setSelectedSeasonId(activeSeasonId);
@@ -2812,6 +2823,7 @@ function StandingsTab({
     setShowGroupForm(false);
     setNewGroupName("");
     setNewGroupMembers([]);
+    setMemberSearch("");
     showToast?.(`Groep "${name}" aangemaakt`);
   };
   const deleteGroup = async group => {
@@ -2876,7 +2888,10 @@ function StandingsTab({
       fontSize: 12,
       padding: "5px 10px"
     },
-    onClick: () => setShowGroupForm(v => !v)
+    onClick: () => {
+      setShowGroupForm(v => !v);
+      setMemberSearch("");
+    }
   }, showGroupForm ? "Annuleren" : "+ Nieuwe groep"), selectedGroup && (selectedGroup.createdBy === currentPlayer || isOrganizer) && /*#__PURE__*/React.createElement("button", {
     className: "jgb-btn",
     type: "button",
@@ -2903,13 +2918,18 @@ function StandingsTab({
       fontSize: 12,
       color: "var(--text-muted)"
     }
-  }, "Kies wie erbij hoort (jijzelf zit er automatisch bij):"), /*#__PURE__*/React.createElement("div", {
+  }, "Kies wie erbij hoort (jijzelf zit er automatisch bij):"), /*#__PURE__*/React.createElement("input", {
+    className: "jgb-input",
+    placeholder: "Zoek een speler…",
+    value: memberSearch,
+    onChange: e => setMemberSearch(e.target.value)
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       flexWrap: "wrap",
       gap: 6
     }
-  }, players.filter(p => p !== currentPlayer).map(p => /*#__PURE__*/React.createElement("label", {
+  }, players.filter(p => p !== currentPlayer).filter(p => p.toLowerCase().includes(memberSearch.trim().toLowerCase())).map(p => /*#__PURE__*/React.createElement("label", {
     key: p,
     style: {
       display: "flex",
@@ -3293,7 +3313,9 @@ function MyResultsTab({
       marginTop: 4,
       color: (standings.totals[currentPlayer] || 0) >= 0 ? "var(--green)" : "var(--red)"
     }
-  }, fmtEuro(standings.totals[currentPlayer] || 0))), renderMyTrophyCase(), formBar, played.map(r => /*#__PURE__*/React.createElement("div", {
+  }, fmtEuro(standings.totals[currentPlayer] || 0))), renderMyTrophyCase(), /*#__PURE__*/React.createElement(HallOfFameCard, {
+    glazenbolHistory: glazenbolHistory
+  }), formBar, played.map(r => /*#__PURE__*/React.createElement("div", {
     key: r.id,
     className: "jgb-card"
   }, /*#__PURE__*/React.createElement("div", {
