@@ -4460,7 +4460,17 @@ function OrganizerTab({
     onClick: () => onUpdateRound(r.id, {
       forceOpen: !r.forceOpen
     })
-  }, r.forceOpen ? "Sluiten" : "Heropenen"), /*#__PURE__*/React.createElement(Trash2, {
+  }, r.forceOpen ? "Sluiten" : "Heropenen"), /*#__PURE__*/React.createElement("a", {
+    className: "jgb-btn",
+    style: {
+      fontSize: 12,
+      padding: "4px 10px",
+      textDecoration: "none"
+    },
+    target: "_blank",
+    rel: "noopener noreferrer",
+    href: "https://wa.me/?text=" + encodeURIComponent(`Nieuwe voorspelling klaar! 🔮\n\n${r.name}\nDeadline: ${fmtDate(r.deadline)}\n\nVoorspel op: https://joopiesglazenbol.nl`)
+  }, "WhatsApp"), /*#__PURE__*/React.createElement(Trash2, {
     size: 16,
     style: {
       cursor: "pointer",
