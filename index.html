@@ -1283,7 +1283,8 @@ function JoopiesGlazenbol() {
     players: players,
     playerPins: playerPins,
     onLogin: persistCurrentPlayer,
-    onLogout: () => persistCurrentPlayer("")
+    onLogout: () => persistCurrentPlayer(""),
+    showToast: showToast
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "18px 16px 100px",
@@ -1745,7 +1746,8 @@ function TopBar({
   players,
   playerPins,
   onLogin,
-  onLogout
+  onLogout,
+  showToast
 }) {
   const [pendingName, setPendingName] = useState("");
   const [pin, setPin] = useState("");
@@ -1857,7 +1859,15 @@ function TopBar({
       textDecoration: "none",
       whiteSpace: "nowrap"
     },
-    href: "mailto:joopiesglazenbol@gmail.com?subject=" + encodeURIComponent("Ik wil meedoen") + "&body=" + encodeURIComponent("Hoi,\n\nIk wil graag meedoen met Joopie's Glazenbol!\n\nMijn naam: ")
+    href: "mailto:joopiesglazenbol@gmail.com?subject=" + encodeURIComponent("Ik wil meedoen") + "&body=" + encodeURIComponent("Hoi,\n\nIk wil graag meedoen met Joopie's Glazenbol!\n\nMijn naam: "),
+    onClick: () => {
+      // Fallback voor als er geen standaard mail-app is ingesteld: het
+      // e-mailadres wordt hoe dan ook gekopieerd, met bevestiging.
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText("joopiesglazenbol@gmail.com").catch(() => {});
+      }
+      showToast?.("joopiesglazenbol@gmail.com gekopieerd — mail geopend, of plak 'm handmatig in je mail-app");
+    }
   }, "Ik wil meedoen")) : /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
