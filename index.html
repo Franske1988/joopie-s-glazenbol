@@ -2789,7 +2789,18 @@ function StandingsTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSeasonId]);
   const myGroups = groups.filter(g => g.members.includes(currentPlayer));
-  const selectedGroup = selectedGroupId === "all" ? null : groups.find(g => g.id === selectedGroupId);
+  // Alleen groepen waar de ingelogde speler ook echt lid van is mogen getoond
+  // worden — dit voorkomt dat een oude selectie blijft "hangen" als iemand
+  // anders inlogt op hetzelfde toestel.
+  const selectedGroup = selectedGroupId === "all" ? null : myGroups.find(g => g.id === selectedGroupId);
+  useEffect(() => {
+    // Zodra de ingelogde speler wisselt (of geen lid meer is van de eerder
+    // geselecteerde groep), val terug op het algemene klassement.
+    if (selectedGroupId !== "all" && !groups.find(g => g.id === selectedGroupId && g.members.includes(currentPlayer))) {
+      setSelectedGroupId("all");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPlayer, groups]);
   const activePlayers = selectedGroup ? selectedGroup.members : players;
   const seasonRounds = useMemo(() => rounds.filter(r => r.seasonId === selectedSeasonId), [rounds, selectedSeasonId]);
   const standings = useMemo(() => computeStandings(seasonRounds, predictions, activePlayers), [seasonRounds, predictions, activePlayers]);
