@@ -1143,11 +1143,12 @@ function JoopiesGlazenbol() {
   const [settings, setSettings] = useState({
     standingsHidden: false
   });
+  const [groups, setGroups] = useState([]);
   useEffect(() => {
     (async () => {
-      const [p, pins, orgs, se, r, pr, cp, st] = await Promise.all([loadShared("players", []), loadShared("playerPins", {}), loadShared("organizers", []), loadShared("seasons", []), loadShared("rounds", []), loadShared("predictions", {}), loadLocal("currentPlayer", ""), loadShared("settings", {
+      const [p, pins, orgs, se, r, pr, cp, st, gr] = await Promise.all([loadShared("players", []), loadShared("playerPins", {}), loadShared("organizers", []), loadShared("seasons", []), loadShared("rounds", []), loadShared("predictions", {}), loadLocal("currentPlayer", ""), loadShared("settings", {
         standingsHidden: false
-      })]);
+      }), loadShared("groups", [])]);
       setPlayers(p);
       setPlayerPins(pins);
       setOrganizers(orgs);
@@ -1174,6 +1175,7 @@ function JoopiesGlazenbol() {
       setPredictions(pr);
       setCurrentPlayer(cp);
       setSettings(st);
+      setGroups(gr);
       setLoading(false);
     })();
   }, []);
@@ -1212,6 +1214,10 @@ function JoopiesGlazenbol() {
   const persistSettings = async next => {
     setSettings(next);
     await saveShared("settings", next);
+  };
+  const persistGroups = async next => {
+    setGroups(next);
+    await saveShared("groups", next);
   };
 
   // Het actieve seizoen is het seizoen zonder closedAt. Standen, statistieken
@@ -1318,7 +1324,11 @@ function JoopiesGlazenbol() {
     seasons: seasons,
     activeSeasonId: activeSeason?.id,
     standingsHidden: settings.standingsHidden,
-    isOrganizer: isOrganizer
+    isOrganizer: isOrganizer,
+    groups: groups,
+    persistGroups: persistGroups,
+    currentPlayer: currentPlayer,
+    showToast: showToast
   }), tab === "mine" && /*#__PURE__*/React.createElement(MyResultsTab, {
     currentPlayer: currentPlayer,
     rounds: activeSeasonRounds,
@@ -2750,21 +2760,67 @@ function StandingsTab({
   seasons,
   activeSeasonId,
   standingsHidden,
-  isOrganizer
+  isOrganizer,
+  groups,
+  persistGroups,
+  currentPlayer,
+  showToast
 }) {
   const sortedSeasons = [...seasons].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   const [selectedSeasonId, setSelectedSeasonId] = useState(activeSeasonId || sortedSeasons[0]?.id || "");
+  const [selectedGroupId, setSelectedGroupId] = useState("all");
+  const [showGroupForm, setShowGroupForm] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMembers, setNewGroupMembers] = useState([]);
   useEffect(() => {
     // volg het actieve seizoen automatisch, tenzij er nog geen keuze is gemaakt
     if (activeSeasonId && !selectedSeasonId) setSelectedSeasonId(activeSeasonId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeSeasonId]);
+  const myGroups = groups.filter(g => g.members.includes(currentPlayer));
+  const selectedGroup = selectedGroupId === "all" ? null : groups.find(g => g.id === selectedGroupId);
+  const activePlayers = selectedGroup ? selectedGroup.members : players;
   const seasonRounds = useMemo(() => rounds.filter(r => r.seasonId === selectedSeasonId), [rounds, selectedSeasonId]);
-  const standings = useMemo(() => computeStandings(seasonRounds, predictions, players), [seasonRounds, predictions, players]);
-  const playerStats = useMemo(() => computePlayerMatchStats(seasonRounds, standings.perMatch, players), [seasonRounds, standings, players]);
-  const ranked = [...players].sort((a, b) => (standings.totals[b] || 0) - (standings.totals[a] || 0));
+  const standings = useMemo(() => computeStandings(seasonRounds, predictions, activePlayers), [seasonRounds, predictions, activePlayers]);
+  const playerStats = useMemo(() => computePlayerMatchStats(seasonRounds, standings.perMatch, activePlayers), [seasonRounds, standings, activePlayers]);
+  const ranked = [...activePlayers].sort((a, b) => (standings.totals[b] || 0) - (standings.totals[a] || 0));
   const selectedSeason = seasons.find(s => s.id === selectedSeasonId);
   const hideForPlayer = standingsHidden && !isOrganizer;
+  const toggleNewGroupMember = player => {
+    setNewGroupMembers(prev => prev.includes(player) ? prev.filter(p => p !== player) : [...prev, player]);
+  };
+  const submitNewGroup = async () => {
+    const name = newGroupName.trim();
+    if (!name) {
+      showToast?.("Geef je groep een naam");
+      return;
+    }
+    const members = Array.from(new Set([...newGroupMembers, currentPlayer]));
+    if (members.length < 2) {
+      showToast?.("Kies minstens 1 andere speler voor je groep");
+      return;
+    }
+    const newGroup = {
+      id: uid(),
+      name,
+      members,
+      createdBy: currentPlayer,
+      createdAt: new Date().toISOString()
+    };
+    await persistGroups([...groups, newGroup]);
+    setSelectedGroupId(newGroup.id);
+    setShowGroupForm(false);
+    setNewGroupName("");
+    setNewGroupMembers([]);
+    showToast?.(`Groep "${name}" aangemaakt`);
+  };
+  const deleteGroup = async group => {
+    if (group.createdBy !== currentPlayer && !isOrganizer) return;
+    await persistGroups(groups.filter(g => g.id !== group.id));
+    setSelectedGroupId("all");
+    showToast?.(`Groep "${group.name}" verwijderd`);
+  };
+
   return /*#__PURE__*/React.createElement("div", {
     className: "jgb-fadein",
     style: {
@@ -2780,7 +2836,7 @@ function StandingsTab({
     }
   }, /*#__PURE__*/React.createElement("div", {
     className: "jgb-h2"
-  }, "Algemeen klassement"), sortedSeasons.length > 0 && /*#__PURE__*/React.createElement("select", {
+  }, selectedGroup ? selectedGroup.name : "Algemeen klassement"), sortedSeasons.length > 0 && /*#__PURE__*/React.createElement("select", {
     className: "jgb-select",
     style: {
       width: "auto",
@@ -2792,7 +2848,87 @@ function StandingsTab({
   }, sortedSeasons.map(s => /*#__PURE__*/React.createElement("option", {
     key: s.id,
     value: s.id
-  }, s.name, " ", s.id === activeSeasonId ? "(actief)" : "")))), sortedSeasons.length === 0 && /*#__PURE__*/React.createElement("div", {
+  }, s.name, " ", s.id === activeSeasonId ? "(actief)" : "")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("select", {
+    className: "jgb-select",
+    style: {
+      width: "auto",
+      fontSize: 12,
+      padding: "5px 8px"
+    },
+    value: selectedGroupId,
+    onChange: e => setSelectedGroupId(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "all"
+  }, "Algemeen klassement (iedereen)"), myGroups.map(g => /*#__PURE__*/React.createElement("option", {
+    key: g.id,
+    value: g.id
+  }, g.name, " (", g.members.length, ")"))), /*#__PURE__*/React.createElement("button", {
+    className: "jgb-btn",
+    type: "button",
+    style: {
+      fontSize: 12,
+      padding: "5px 10px"
+    },
+    onClick: () => setShowGroupForm(v => !v)
+  }, showGroupForm ? "Annuleren" : "+ Nieuwe groep"), selectedGroup && (selectedGroup.createdBy === currentPlayer || isOrganizer) && /*#__PURE__*/React.createElement("button", {
+    className: "jgb-btn",
+    type: "button",
+    style: {
+      fontSize: 12,
+      padding: "5px 10px",
+      color: "var(--danger, #d9534f)"
+    },
+    onClick: () => deleteGroup(selectedGroup)
+  }, "Groep verwijderen")), showGroupForm && /*#__PURE__*/React.createElement("div", {
+    className: "jgb-card",
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "jgb-input",
+    placeholder: "Naam van je groep (bv. \"De kantine\")",
+    value: newGroupName,
+    onChange: e => setNewGroupName(e.target.value)
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "var(--text-muted)"
+    }
+  }, "Kies wie erbij hoort (jijzelf zit er automatisch bij):"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 6
+    }
+  }, players.filter(p => p !== currentPlayer).map(p => /*#__PURE__*/React.createElement("label", {
+    key: p,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 4,
+      fontSize: 13,
+      border: "1px solid var(--border)",
+      borderRadius: 8,
+      padding: "4px 8px"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: newGroupMembers.includes(p),
+    onChange: () => toggleNewGroupMember(p)
+  }), p))), /*#__PURE__*/React.createElement("button", {
+    className: "jgb-btn jgb-btn-primary",
+    type: "button",
+    onClick: submitNewGroup
+  }, "Groep aanmaken")), sortedSeasons.length === 0 && /*#__PURE__*/React.createElement("div", {
     className: "jgb-card",
     style: {
       color: "var(--text-muted)",
@@ -2867,7 +3003,7 @@ function StandingsTab({
         color: "var(--text-muted)",
         width: 18
       }
-    }, i + 1), p, (HALL_OF_FAME.find(w => w.name === p)?.count || 0) > 0 && /*#__PURE__*/React.createElement("span", {
+    }, i + 1), p, selectedGroup?.name === "Joopie's Angels" && (HALL_OF_FAME.find(w => w.name === p)?.count || 0) > 0 && /*#__PURE__*/React.createElement("span", {
       style: {
         display: "inline-flex",
         gap: 1,
@@ -2926,7 +3062,7 @@ function StandingsTab({
       fontWeight: 600,
       marginBottom: 6
     }
-  }, r.name), players.map(p => /*#__PURE__*/React.createElement("div", {
+  }, r.name), activePlayers.map(p => /*#__PURE__*/React.createElement("div", {
     key: p,
     style: {
       display: "flex",
