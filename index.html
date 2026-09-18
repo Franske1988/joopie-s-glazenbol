@@ -1849,7 +1849,16 @@ function TopBar({
   }, players.map(p => /*#__PURE__*/React.createElement("option", {
     key: p,
     value: p
-  })))) : /*#__PURE__*/React.createElement("div", {
+  }))), /*#__PURE__*/React.createElement("a", {
+    className: "jgb-btn",
+    style: {
+      padding: "7px 10px",
+      fontSize: 12,
+      textDecoration: "none",
+      whiteSpace: "nowrap"
+    },
+    href: "mailto:joopiesglazenbol@gmail.com?subject=" + encodeURIComponent("Ik wil meedoen") + "&body=" + encodeURIComponent("Hoi,\n\nIk wil graag meedoen met Joopie's Glazenbol!\n\nMijn naam: ")
+  }, "Ik wil meedoen")) : /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
